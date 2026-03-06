@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Cabra da Caatinga AR</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Crimson+Pro:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; }
+
+  #video {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover; z-index: 0;
+    transform: scaleX(-1);
+  }
+
+  #canvas {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 1; pointer-events: none;
+  }
+
+  /* ── Start Screen ── */
+  #start-screen {
+    position: fixed; inset: 0; z-index: 30;
+    background: #0d0800;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 0; overflow: hidden;
+  }
+
+  /* Texture overlay */
+  #start-screen::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,160,40,0.03) 2px, rgba(255,160,40,0.03) 4px),
+      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(255,160,40,0.02) 2px, rgba(255,160,40,0.02) 4px);
+    pointer-events: none;
+  }
+
+  .sun-bg {
+    position: absolute; bottom: -120px; left: 50%;
+    transform: translateX(-50%);
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(255,140,0,0.18) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: pulse 3s ease-in-out infinite;
+  }
+
+  @keyframes pulse { 0%,100%{transform:translateX(-50%) scale(1);opacity:1} 50%{transform:translateX(-50%) scale(1.1);opacity:0.7} }
+
+  .start-content {
+    position: relative; z-index: 2;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 20px;
+    padding: 40px 32px; text-align: center;
+  }
+
+  .badge {
+    font-family: 'Crimson Pro', serif;
+    font-size: 11px; letter-spacing: 4px; text-transform: uppercase;
+    color: #c87820; border: 1px solid #c87820;
+    padding: 6px 16px; border-radius: 2px;
+  }
+
+  .start-content h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: clamp(2.4rem, 9vw, 4rem);
+    font-weight: 900; line-height: 1;
+    color: #f5e6c8;
+    text-shadow: 0 0 60px rgba(200,120,32,0.5);
+  }
+
+  .start-content h1 span { color: #e08020; }
+
+  .goat-icon {
+    font-size: 90px;
+    filter: drop-shadow(0 0 30px rgba(255,140,0,0.6));
+    animation: float-icon 3s ease-in-out infinite;
+  }
+  @keyframes float-icon { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-12px)} }
+
+  .start-content p {
+    font-family: 'Crimson Pro', serif;
+    font-size: 1.15rem; color: rgba(245,230,200,0.65);
+    max-width: 280px; line-height: 1.6;
+  }
+
+  #start-btn {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem; font-weight: 700;
+    background: linear-gradient(135deg, #e08020, #c84010);
+    color: #fff; border: none;
+    padding: 16px 44px; border-radius: 3px;
+    cursor: pointer; letter-spacing: 1px;
+    box-shadow: 0 0 40px rgba(224,128,32,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition: transform 0.2s, box-shadow 0.2s;
+    text-transform: uppercase;
+  }
+  #start-btn:hover { transform: scale(1.04); box-shadow: 0 0 60px rgba(224,128,32,0.7); }
+
+  /* ── HUD ── */
+  #hud-top {
+    position: fixed; top: 0; left: 0; right: 0;
+    z-index: 10; padding: 16px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+    opacity: 0; transition: opacity 0.6s;
+  }
+  #hud-top.show { opacity: 1; }
+
+  .hud-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1rem; font-weight: 700;
+    color: #f5e6c8; letter-spacing: 1px;
+  }
+  .hud-title span { color: #e08020; }
+
+  .hud-badge {
+    font-family: 'Crimson Pro', serif;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: rgba(245,230,200,0.6);
+    border: 1px solid rgba(245,230,200,0.2);
+    padding: 4px 10px; border-radius: 2px;
+  }
+
+  /* ── Controls ── */
+  #controls {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    z-index: 10; padding: 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.65), transparent);
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    opacity: 0; transition: opacity 0.6s;
+  }
+  #controls.show { opacity: 1; }
+
+  .ctrl-btn {
+    font-family: 'Crimson Pro', serif;
+    font-size: 13px; font-weight: 600; letter-spacing: 1px;
+    background: rgba(255,255,255,0.08);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(245,230,200,0.25);
+    color: #f5e6c8; padding: 10px 22px;
+    border-radius: 2px; cursor: pointer;
+    transition: all 0.2s; text-transform: uppercase;
+  }
+  .ctrl-btn:hover, .ctrl-btn.active {
+    background: rgba(224,128,32,0.3);
+    border-color: rgba(224,128,32,0.6);
+    color: #ffe0a0;
+  }
+
+  /* Scan line effect */
+  #scanline {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 3px,
+      rgba(0,0,0,0.04) 3px, rgba(0,0,0,0.04) 4px
+    );
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: fixed; z-index: 5; width: 40px; height: 40px;
+    border-color: rgba(224,128,32,0.5); border-style: solid;
+    pointer-events: none;
+    opacity: 0; transition: opacity 0.6s;
+  }
+  .corner.show { opacity: 1; }
+  .corner.tl { top: 14px; left: 14px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 14px; right: 14px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 80px; left: 14px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 80px; right: 14px; border-width: 0 2px 2px 0; }
+</style>
+</head>
+<body>
+
+<!-- Start Screen -->
+<div id="start-screen">
+  <div class="sun-bg"></div>
+  <div class="start-content">
+    <div class="badge">Caatinga • Realidade Aumentada</div>
+    <div class="goat-icon">🐐</div>
+    <h1>Cabra da<br><span>Caatinga</span></h1>
+    <p>Veja a cabra do sertão em 3D aparecer através da sua câmera</p>
+    <button id="start-btn" onclick="startAR()">📷 Abrir Câmera</button>
+  </div>
+</div>
+
+<video id="video" autoplay muted playsinline></video>
+<canvas id="canvas"></canvas>
+<div id="scanline"></div>
+
+<div class="corner tl" id="c1"></div>
+<div class="corner tr" id="c2"></div>
+<div class="corner bl" id="c3"></div>
+<div class="corner br" id="c4"></div>
+
+<div id="hud-top">
+  <div class="hud-title">🐐 Cabra <span>Caatinga</span></div>
+  <div class="hud-badge">AR • 3D</div>
+</div>
+
+<div id="controls">
+  <button class="ctrl-btn active" onclick="setMode('idle')">Parado</button>
+  <button class="ctrl-btn" onclick="setMode('walk')">Andando</button>
+  <button class="ctrl-btn" onclick="setMode('bleat')">Balindo</button>
+  <button class="ctrl-btn" onclick="toggleSpin(this)">↺ Girar</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+let scene, camera, renderer, goat, animFrame;
+let time = 0;
+let spinning = false;
+let mode = 'idle';
+let lastTouchX = null;
+
+// Body part refs for animation
+let parts = {};
+
+function showError(msg) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:rgba(160,0,0,0.95);color:white;padding:20px;font-size:13px;z-index:999;white-space:pre-wrap;font-family:monospace;line-height:1.6';
+  box.textContent = msg;
+  document.body.appendChild(box);
+  // Mostra start screen de novo
+  document.getElementById('start-screen').style.display = 'flex';
+}
+
+async function startAR() {
+  const video = document.getElementById('video');
+
+  // 1. Verifica protocolo
+  if (location.protocol === 'file:') {
+    showError('❌ Protocolo file:// detectado!\n\nCâmera não funciona quando o arquivo é aberto direto do computador.\n\n✅ Solução: Abra este arquivo pelo Claude.ai (artifact) ou suba num servidor local.');
+    return;
+  }
+
+  // 2. Verifica suporte à API
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError('❌ Navegador não suporta câmera.\n\nUse Chrome, Edge ou Firefox atualizados com HTTPS.');
+    return;
+  }
+
+  document.getElementById('start-screen').style.display = 'none';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    video.srcObject = stream;
+    video.onloadedmetadata = () => video.play();
+    if (video.readyState >= 2) video.play();
+  } catch(e) {
+    let msg = '❌ Erro: ' + e.name + '\n' + e.message + '\n\n';
+    if (e.name === 'NotAllowedError')
+      msg += '👉 Permissão negada.\nClique no ícone de câmera 🎥 na barra de endereço e permita o acesso.';
+    else if (e.name === 'NotFoundError')
+      msg += '👉 Nenhuma câmera encontrada.\nVerifique se a webcam está conectada e reconhecida pelo Windows.';
+    else if (e.name === 'NotReadableError')
+      msg += '👉 Câmera em uso por outro app.\nFeche Zoom, Teams, Meet ou qualquer app usando a webcam.';
+    else if (e.name === 'OverconstrainedError')
+      msg += '👉 Restrições de câmera não suportadas.\nTente atualizar o navegador.';
+    showError(msg);
+    return;
+  }
+
+  ['c1','c2','c3','c4'].forEach(id => document.getElementById(id).classList.add('show'));
+  document.getElementById('hud-top').classList.add('show');
+  document.getElementById('controls').classList.add('show');
+  initThree();
+}
+
+function initThree() {
+  const canvas = document.getElementById('canvas');
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.setClearColor(0x000000, 0);
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.set(0, 1.4, 5.5);
+  camera.lookAt(0, 0.5, 0);
+
+  // Lighting — warm sertão sun
+  const ambient = new THREE.AmbientLight(0xfff0d0, 0.7);
+  scene.add(ambient);
+
+  const sun = new THREE.DirectionalLight(0xffe080, 1.6);
+  sun.position.set(4, 8, 4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.width = 1024;
+  sun.shadow.mapSize.height = 1024;
+  scene.add(sun);
+
+  const fill = new THREE.DirectionalLight(0xff8844, 0.4);
+  fill.position.set(-4, 1, -2);
+  scene.add(fill);
+
+  const ground = new THREE.DirectionalLight(0xc87820, 0.2);
+  ground.position.set(0, -3, 0);
+  scene.add(ground);
+
+  // Shadow plane
+  const planeGeo = new THREE.PlaneGeometry(12, 12);
+  const planeMat = new THREE.ShadowMaterial({ opacity: 0.35 });
+  const plane = new THREE.Mesh(planeGeo, planeMat);
+  plane.rotation.x = -Math.PI / 2;
+  plane.position.y = -1.02;
+  plane.receiveShadow = true;
+  scene.add(plane);
+
+  buildGoat();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Touch drag
+  canvas.style.pointerEvents = 'auto';
+  canvas.addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; });
+  canvas.addEventListener('touchmove', e => {
+    if (lastTouchX !== null && goat) {
+      goat.rotation.y += (e.touches[0].clientX - lastTouchX) * 0.012;
+      lastTouchX = e.touches[0].clientX;
+    }
+  });
+  canvas.addEventListener('touchend', () => { lastTouchX = null; });
+  canvas.addEventListener('mousemove', e => {
+    if (e.buttons === 1 && goat) goat.rotation.y += e.movementX * 0.012;
+  });
+
+  animate();
+}
+
+function buildGoat() {
+  if (goat) scene.remove(goat);
+  goat = new THREE.Group();
+  parts = {};
+  time = 0;
+
+  // Materials
+  const furColor  = 0xc8a068;   // caramelo típico da cabra do sertão
+  const darkFur   = 0x7a4a20;
+  const whiteFur  = 0xf0e0c8;
+  const hornColor = 0xd4b080;
+  const noseColor = 0xe8a090;
+  const eyeColor  = 0x1a0f00;
+  const hoofColor = 0x2a1a08;
+  const beardColor= 0xf0ddb0;
+
+  const mat   = (c, shine=30) => new THREE.MeshPhongMaterial({ color: c, shininess: shine });
+  const mSmooth = mat(furColor, 40);
+  const mDark   = mat(darkFur, 20);
+  const mWhite  = mat(whiteFur, 15);
+  const mHorn   = mat(hornColor, 60);
+  const mNose   = mat(noseColor, 50);
+  const mEye    = mat(eyeColor, 80);
+  const mHoof   = mat(hoofColor, 70);
+  const mBeard  = mat(beardColor, 10);
+
+  // ── BODY ──
+  const bodyGeo = new THREE.SphereGeometry(0.62, 18, 14);
+  const body = new THREE.Mesh(bodyGeo, mSmooth);
+  body.scale.set(1.1, 0.82, 1.35);
+  body.position.set(0, 0.1, 0);
+  body.castShadow = true;
+  goat.add(body);
+  parts.body = body;
+
+  // belly patch (lighter)
+  const bellyGeo = new THREE.SphereGeometry(0.38, 12, 10);
+  const belly = new THREE.Mesh(bellyGeo, mWhite);
+  belly.scale.set(0.9, 0.55, 1.1);
+  belly.position.set(0, -0.22, 0.05);
+  goat.add(belly);
+
+  // ── NECK ──
+  const neckGeo = new THREE.CylinderGeometry(0.2, 0.26, 0.5, 10);
+  const neck = new THREE.Mesh(neckGeo, mSmooth);
+  neck.position.set(0, 0.52, 0.38);
+  neck.rotation.x = -0.5;
+  goat.add(neck);
+  parts.neck = neck;
+
+  // ── HEAD ──
+  const headGroup = new THREE.Group();
+  headGroup.position.set(0, 0.88, 0.68);
+  goat.add(headGroup);
+  parts.headGroup = headGroup;
+
+  const headGeo = new THREE.SphereGeometry(0.3, 14, 12);
+  const head = new THREE.Mesh(headGeo, mSmooth);
+  head.scale.set(0.85, 0.9, 1.1);
+  headGroup.add(head);
+
+  // Snout (focinho alongado — característico da cabra)
+  const snoutGeo = new THREE.SphereGeometry(0.18, 12, 10);
+  const snout = new THREE.Mesh(snoutGeo, mSmooth);
+  snout.scale.set(0.85, 0.72, 1.1);
+  snout.position.set(0, -0.07, 0.32);
+  headGroup.add(snout);
+  parts.snout = snout;
+
+  // Nostrils
+  [-0.065, 0.065].forEach(x => {
+    const nostrilGeo = new THREE.SphereGeometry(0.04, 8, 6);
+    const nostril = new THREE.Mesh(nostrilGeo, mNose);
+    nostril.scale.set(1.2, 0.7, 0.8);
+    nostril.position.set(x, -0.11, 0.45);
+    headGroup.add(nostril);
+  });
+
+  // Mouth line
+  const mouthGeo = new THREE.TorusGeometry(0.06, 0.012, 6, 12, Math.PI);
+  const mouth = new THREE.Mesh(mouthGeo, mDark);
+  mouth.position.set(0, -0.155, 0.44);
+  mouth.rotation.z = Math.PI;
+  headGroup.add(mouth);
+  parts.mouth = mouth;
+
+  // Eyes (pupila retangular — característica das cabras)
+  [-0.17, 0.17].forEach(x => {
+    const eyeGeo = new THREE.SphereGeometry(0.072, 10, 8);
+    const eye = new THREE.Mesh(eyeGeo, mat(0xd4a832, 60)); // âmbar
+    eye.position.set(x, 0.06, 0.26);
+    headGroup.add(eye);
+
+    // Pupila (elipse achatada)
+    const pupilGeo = new THREE.SphereGeometry(0.042, 8, 6);
+    const pupil = new THREE.Mesh(pupilGeo, mEye);
+    pupil.scale.set(0.4, 1, 0.3);
+    pupil.position.set(x, 0.06, 0.33);
+    headGroup.add(pupil);
+  });
+
+  // ── EARS (pendentes) ──
+  [-1, 1].forEach(side => {
+    const earGroup = new THREE.Group();
+    earGroup.position.set(side * 0.3, 0.16, 0.0);
+    headGroup.add(earGroup);
+
+    const earGeo = new THREE.SphereGeometry(0.14, 10, 8);
+    const ear = new THREE.Mesh(earGeo, mSmooth);
+    ear.scale.set(0.55, 1.4, 0.45);
+    ear.position.set(side * 0.04, -0.14, 0);
+    ear.rotation.z = side * 0.25;
+    earGroup.add(ear);
+
+    // inner
+    const innerGeo = new THREE.SphereGeometry(0.09, 8, 6);
+    const inner = new THREE.Mesh(innerGeo, mNose);
+    inner.scale.set(0.4, 1.1, 0.3);
+    inner.position.set(side * 0.05, -0.13, 0.04);
+    inner.rotation.z = side * 0.25;
+    earGroup.add(inner);
+
+    if (side === -1) parts.earL = earGroup;
+    else parts.earR = earGroup;
+  });
+
+  // ── HORNS (curvados para cima e para fora) ──
+  [-1, 1].forEach(side => {
+    const hornGroup = new THREE.Group();
+    hornGroup.position.set(side * 0.15, 0.28, -0.06);
+    headGroup.add(hornGroup);
+
+    // Base do chifre
+    const h1Geo = new THREE.CylinderGeometry(0.045, 0.06, 0.28, 8);
+    const h1 = new THREE.Mesh(h1Geo, mHorn);
+    h1.rotation.z = side * -0.55;
+    h1.rotation.x = -0.2;
+    h1.position.set(0, 0.12, 0);
+    hornGroup.add(h1);
+
+    // Curva do chifre
+    const h2Geo = new THREE.CylinderGeometry(0.02, 0.042, 0.22, 8);
+    const h2 = new THREE.Mesh(h2Geo, mHorn);
+    h2.rotation.z = side * -0.8;
+    h2.rotation.x = -0.5;
+    h2.position.set(side * 0.1, 0.26, -0.06);
+    hornGroup.add(h2);
+
+    // Ponta
+    const tipGeo = new THREE.ConeGeometry(0.018, 0.1, 6);
+    const tip = new THREE.Mesh(tipGeo, mHorn);
+    tip.rotation.z = side * -1.0;
+    tip.rotation.x = -0.7;
+    tip.position.set(side * 0.18, 0.3, -0.1);
+    hornGroup.add(tip);
+  });
+
+  // ── BEARD (barba — típica das cabras) ──
+  const beardGroup = new THREE.Group();
+  beardGroup.position.set(0, -0.28, 0.42);
+  headGroup.add(beardGroup);
+  parts.beardGroup = beardGroup;
+
+  for (let i = 0; i < 5; i++) {
+    const bGeo = new THREE.SphereGeometry(0.055 - i * 0.004, 8, 6);
+    const bMesh = new THREE.Mesh(bGeo, mBeard);
+    bMesh.position.set((i%2===0?0:( i<3?-0.04:0.04 )), -i * 0.07, 0);
+    beardGroup.add(bMesh);
+  }
+
+  // ── LEGS ──
+  const legPositions = [
+    { x: -0.28, z: -0.38, name: 'legFL' },
+    { x:  0.28, z: -0.38, name: 'legFR' },
+    { x: -0.28, z:  0.38, name: 'legBL' },
+    { x:  0.28, z:  0.38, name: 'legBR' },
+  ];
+
+  legPositions.forEach(({ x, z, name }) => {
+    const legGroup = new THREE.Group();
+    legGroup.position.set(x, -0.1, z);
+    goat.add(legGroup);
+    parts[name] = legGroup;
+
+    // Upper leg
+    const upGeo = new THREE.CylinderGeometry(0.1, 0.085, 0.48, 8);
+    const up = new THREE.Mesh(upGeo, mSmooth);
+    up.position.y = -0.24;
+    up.castShadow = true;
+    legGroup.add(up);
+
+    // Lower leg
+    const loGeo = new THREE.CylinderGeometry(0.072, 0.055, 0.42, 8);
+    const lo = new THREE.Mesh(loGeo, mDark);
+    lo.position.y = -0.65;
+    lo.castShadow = true;
+    legGroup.add(lo);
+
+    // Hoof (casco fendido)
+    const hoofGeo = new THREE.BoxGeometry(0.12, 0.1, 0.1);
+    const hoof = new THREE.Mesh(hoofGeo, mHoof);
+    hoof.position.y = -0.91;
+    hoof.castShadow = true;
+    legGroup.add(hoof);
+    // split
+    const splitGeo = new THREE.BoxGeometry(0.015, 0.11, 0.11);
+    const split = new THREE.Mesh(splitGeo, mat(0x1a0800));
+    split.position.y = -0.91;
+    legGroup.add(split);
+  });
+
+  // ── TAIL ──
+  const tailGeo = new THREE.SphereGeometry(0.11, 8, 6);
+  const tail = new THREE.Mesh(tailGeo, mWhite);
+  tail.scale.set(0.8, 1.3, 0.7);
+  tail.position.set(0, 0.22, -0.82);
+  goat.add(tail);
+  parts.tail = tail;
+
+  // ── UDDER (úbere — cabra fêmea) ──
+  const udderGeo = new THREE.SphereGeometry(0.14, 10, 8);
+  const udder = new THREE.Mesh(udderGeo, mat(0xf0c0a0, 30));
+  udder.scale.set(1, 0.7, 0.9);
+  udder.position.set(0, -0.42, 0.28);
+  goat.add(udder);
+  // Tits
+  [-0.06, 0.06].forEach(x => {
+    const titGeo = new THREE.CylinderGeometry(0.025, 0.018, 0.08, 6);
+    const tit = new THREE.Mesh(titGeo, mat(0xe0a888));
+    tit.position.set(x, -0.56, 0.28);
+    goat.add(tit);
+  });
+
+  // ── Decorative dust particles ──
+  const dustGeo = new THREE.BufferGeometry();
+  const pos = [];
+  for (let i = 0; i < 80; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 1.1 + Math.random() * 0.8;
+    const y = -0.8 + Math.random() * 1.8;
+    pos.push(r * Math.cos(a), y, r * Math.sin(a));
+  }
+  dustGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  const dustMat = new THREE.PointsMaterial({ color: 0xc87820, size: 0.025, transparent: true, opacity: 0.55 });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  goat.add(dust);
+  parts.dust = dust;
+
+  // Glow ring on ground
+  const ringGeo = new THREE.TorusGeometry(1.0, 0.025, 6, 60);
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0xe08020, transparent: true, opacity: 0.4 });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.y = -1.0;
+  goat.add(ring);
+  parts.ring = ring;
+
+  goat.position.y = -0.15;
+  goat.rotation.y = 0.4; // slight angle to look natural
+  scene.add(goat);
+}
+
+function animate() {
+  animFrame = requestAnimationFrame(animate);
+  time += 0.016;
+
+  if (!goat) { renderer.render(scene, camera); return; }
+
+  // Float
+  goat.position.y = -0.15 + Math.sin(time * 0.9) * 0.05;
+
+  // Spin
+  if (spinning) goat.rotation.y += 0.01;
+
+  // Dust rotate
+  if (parts.dust) parts.dust.rotation.y += 0.006;
+
+  // Ring pulse
+  if (parts.ring) parts.ring.material.opacity = 0.3 + Math.sin(time * 1.5) * 0.15;
+
+  // Ear sway
+  if (parts.earL) parts.earL.rotation.z = Math.sin(time * 1.2) * 0.12;
+  if (parts.earR) parts.earR.rotation.z = -Math.sin(time * 1.2) * 0.12;
+
+  // Tail wag
+  if (parts.tail) parts.tail.rotation.z = Math.sin(time * 3) * 0.25;
+
+  // Beard sway
+  if (parts.beardGroup) parts.beardGroup.rotation.x = Math.sin(time * 1.4) * 0.08;
+
+  // Mode animations
+  if (mode === 'walk') {
+    // Leg swing
+    const legPhase = time * 3;
+    if (parts.legFL) parts.legFL.rotation.x =  Math.sin(legPhase) * 0.35;
+    if (parts.legBR) parts.legBR.rotation.x =  Math.sin(legPhase) * 0.35;
+    if (parts.legFR) parts.legFR.rotation.x = -Math.sin(legPhase) * 0.35;
+    if (parts.legBL) parts.legBL.rotation.x = -Math.sin(legPhase) * 0.35;
+    // Body sway
+    if (parts.body) parts.body.rotation.z = Math.sin(legPhase * 0.5) * 0.04;
+    goat.position.x = Math.sin(time * 0.4) * 0.3;
+  } else if (mode === 'bleat') {
+    // Head bobs
+    if (parts.headGroup) {
+      parts.headGroup.rotation.x = Math.sin(time * 5) * 0.12;
+      parts.headGroup.position.y = 0.88 + Math.sin(time * 5) * 0.04;
+    }
+    // Mouth open
+    if (parts.mouth) parts.mouth.scale.y = 1 + Math.abs(Math.sin(time * 5)) * 0.6;
+  } else {
+    // idle: subtle head nod
+    if (parts.headGroup) {
+      parts.headGroup.rotation.x = Math.sin(time * 0.7) * 0.04;
+    }
+    // reset legs
+    ['legFL','legFR','legBL','legBR'].forEach(k => {
+      if (parts[k]) parts[k].rotation.x *= 0.9;
+    });
+    goat.position.x *= 0.95;
+  }
+
+  renderer.render(scene, camera);
+}
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+}
+
+function toggleSpin(btn) {
+  spinning = !spinning;
+  btn.textContent = spinning ? '⏸ Parar' : '↺ Girar';
+  btn.classList.toggle('active', spinning);
+}
+</script>
+</body>
+</html>
